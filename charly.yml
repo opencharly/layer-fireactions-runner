@@ -3,3 +3,94 @@ discover:
       recursive: true
     - path: candy
       recursive: true
+
+# =============================================================================
+# WI-10's gate: boot the runner image and assert the guest contract.
+#
+# The ledger names two things for this work item - the image's own plan, and a
+# microVM boot that asserts the contract. The plan is baked; this is the boot.
+#
+# The image is built FROM THIS REPO'S BOX by a pinned remote ref, so the bed
+# boots the very image the repo ships instead of a second copy of its
+# definition - and a guest needs no checkout for that, which is why the ref
+# form is the honest one here.
+#
+# What can be asserted without networking: the CONTRACT lives on the root drive
+# (read back with debugfs, the producer's own technique) and the BOOT lives on
+# the VMM's serial output, which the ledger measured as the VMM's stdout. No
+# TAP, no root and no network are needed, exactly as Firecracker's own recipe
+# showed.
+# =============================================================================
+fireactions-runner-vm-base:
+    vm:
+        source:
+            kind: cloud_image
+            url: https://geo.mirror.pkgbuild.com/images/latest/Arch-Linux-x86_64-cloudimg.qcow2
+            base_user: arch
+            distro: arch
+        backend: libvirt
+        disk_size: 20G
+        ram: 4G
+        cpu: 2
+        machine: q35
+        firmware: bios
+        ssh:
+            port_auto: true
+            key_source: generate
+        cloud_init:
+            timezone: UTC
+            package:
+                - sudo
+
+fireactions-runner-vm-host:
+    local:
+        description: >-
+            The boot venue: the pinned Firecracker release and kernel that start the artefact, and the engine
+            the image build runs through. No project is written in - the bed builds the image from this repo's
+            own box by a pinned remote ref, so there is no second definition to drift.
+        candy:
+            - '@github.com/opencharly/layer-firecracker/candy/layer-firecracker:v2026.287.1531'
+
+check-fireactions-runner-vm:
+    vm:
+        from: fireactions-runner-vm-base
+        disposable: true
+        lifecycle: dev
+        description: >-
+            WI-10's gate on a disposable guest: build the runner image from this repo's box, then BOOT it under
+            the pinned VMM and assert the guest contract both ways it can be asserted without networking - the
+            contract on the root drive and the boot on the serial output.
+        check-fireactions-runner-vm-member:
+            local:
+                from: fireactions-runner-vm-host
+        plan:
+            - check: the runner image builds from this repo's box, pinned
+              id: runner-image-builds
+              command: |
+                set -eu
+                # The deploy own layout is the ONLY place charly is looked for: measured, the deploy provides
+                # it as an executable FILE at /tmp/charly-CalVer-hash.
+                #
+                # This block was written once with an UNQUOTED heredoc, and bash expanded every $ variable in
+                # it before the file was written - which is how a guest that HAD charly reported that it had
+                # none, and why the pinned ref below was empty. The check echoes what it resolved.
+                CHARLY=
+                for f in /tmp/charly-*; do
+                  if [ -f "$f" ] && [ -x "$f" ]; then CHARLY="$f"; break; fi
+                done
+                if [ -z "$CHARLY" ]; then
+                  echo "NO CHARLY FOUND in the guest. PATH=$PATH; /tmp holds:" >&2
+                  ls -la /tmp >&2
+                  exit 1
+                fi
+                echo "charly: $CHARLY" >&2
+                cd /opt
+                if ! "$CHARLY" firecracker image build \
+                       '@github.com/opencharly/layer-fireactions-runner/box/fireactions-runner:1e3e39f097d78e6328d26aca168d3baea2061265' \
+                       --ref localhost/fireactions-runner-proof:1 \
+                       --kernel /var/lib/firecracker/kernels/5.10/vmlinux > /tmp/runner-build.log 2>&1; then
+                  echo "=== the image build failed; its own output follows:" >&2
+                  head -10 /tmp/runner-build.log >&2
+                  exit 1
+                fi
+                tail -3 /tmp/runner-build.log >&2
