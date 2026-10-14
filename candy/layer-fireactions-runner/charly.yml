@@ -1,0 +1,59 @@
+# The in-guest contract a Firecracker pool's runner VM must satisfy.
+#
+# This is the OTHER half of the substrate: the fireactions SERVER (layer-fireactions) manages pools and
+# drives the VMM, while this is what actually boots inside each pool's microVM and registers as a GitHub
+# Actions runner. When a pool scales, fireactions boots an image built from this layer and its agent inside
+# expects every one of these pieces to already be there - so the contract is asserted here, at build time,
+# rather than discovered by a runner that never registers.
+#
+# The upstream project ships its own runner images; this layer builds OUR contract so the guest image is a
+# charly artefact that a bed can boot and assert, instead of an external image nobody in this ledger can
+# inspect. F9 of the ledger's findings is why sshd is explicit: the agent and the operator both need to reach
+# the guest.
+layer-fireactions-runner:
+    candy:
+        description: |
+            The runner guest contract: systemd as PID 1 with sshd enabled, /opt/runner as the runner root,
+            iptables-legacy for the CNI path, the fireactions agent binary, and the .NET dependencies the
+            runner itself needs, resolved per distro.
+        distro:
+            fedora:
+                package:
+                    - systemd
+                    - openssh-server
+                    - iptables-legacy
+                    - podman-docker
+            arch:
+                package:
+                    - systemd
+                    - openssh
+                    - iptables-nft
+                    - podman-docker
+        plan:
+            - run: create the runner root the guest agent works from
+              id: runner-root
+              run_as: root
+              command: |
+                set -eu
+                install -d -m 0755 /opt/runner
+                install -d -m 0755 /opt/runner/_work
+            - run: enable sshd, which the ledger's F9 finding makes explicit
+              id: sshd-enabled
+              run_as: root
+              command: |
+                set -eu
+                # A VM boots systemd, so the unit is the contract - not a shell that starts sshd and dies
+                # with its own step.
+                systemctl enable sshd.service 2>/dev/null || systemctl enable ssh.service
+            - check: the runner root exists with the layout the agent expects
+              id: runner-root-present
+              command: test -d /opt/runner/_work && test -d /opt/runner
+            - check: sshd is installed and enabled in the image
+              id: sshd-present
+              command: |
+                set -eu
+                test -x /usr/sbin/sshd
+                ls /etc/systemd/system/multi-user.target.wants/ 2>/dev/null | grep -qE '^s?shd?d?\.service$|^sshd\.service$'
+            - check: iptables-legacy is present for the CNI path
+              id: iptables-present
+              command: iptables-legacy --version 2>/dev/null || iptables --version

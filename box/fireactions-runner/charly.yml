@@ -1,0 +1,15 @@
+# The guest image a Firecracker pool boots as its root drive.
+#
+# It is an IMAGE: the runner contract baked onto a distro base, which is what `charly firecracker image
+# build` turns into the raw root drive the VMM starts. The fireactions binary comes from the layer that owns
+# it - layer-fireactions - pinned at the commit carrying its validated build, rather than rebuilt here
+# (R2: one owner per behaviour, and duplicating its Go build would be a second copy to keep in step).
+fireactions-runner:
+    candy:
+        description: The Firecracker pool guest image — the runner contract on a Fedora base, with the fireactions agent from the layer that owns it.
+        distro: [fedora]
+        build: [rpm]
+        base: quay.io/fedora/fedora:43
+        candy:
+            - layer-fireactions-runner
+            - '@github.com/opencharly/layer-fireactions/candy/layer-fireactions:c51a5bc6a75f6397677a204e5f9ab3d2fa84fffc'
