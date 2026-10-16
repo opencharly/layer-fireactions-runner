@@ -53,6 +53,12 @@ fireactions-runner-vm-host:
             own box by a pinned remote ref, so there is no second definition to drift.
         candy:
             - '@github.com/opencharly/layer-firecracker/candy/layer-firecracker:v2026.287.1531'
+            # The plugin's TREE, so `charly firecracker image build` resolves at this venue.
+            # Without it the verb is an unknown command and the step answers with charly's usage
+            # text: `firecracker` is an out-of-process command plugin, and a project that does not
+            # carry the candy has nothing for the loader to prepend. Measured 2026-10-16: the two
+            # candies above deliver fine and the plugin is simply absent from the set.
+            - '@github.com/opencharly/plugin-firecracker/candy/plugin-firecracker:v2026.288.0016'
 
 check-fireactions-runner-vm:
     vm:
@@ -96,6 +102,23 @@ check-fireactions-runner-vm:
                   exit 1
                 fi
                 echo "charly: $CHARLY" >&2
+                # The plugin TREE. `charly firecracker` is an out-of-process command plugin, and the
+                # delivery a Containerfile performs at image-build time has no equivalent on a
+                # cloud_image venue - so the tree is provisioned here, from the plugin the candy
+                # installed. CHARLY_PLUGIN_DIR PREPENDS a directory ahead of the FHS one the loader
+                # searches, so this is the whole contract: a directory holding the executable, and
+                # the variable pointing at it in this shell.
+                PLUGIN=$(find /opt /usr/lib /usr/libexec /usr/local/lib -type f \
+                           -name 'plugin-firecracker*' -perm -u+x 2>/dev/null | head -1)
+                if [ -n "$PLUGIN" ]; then
+                  mkdir -p /tmp/charly-plugins
+                  ln -sf "$PLUGIN" /tmp/charly-plugins/plugin-firecracker
+                  CHARLY_PLUGIN_DIR=/tmp/charly-plugins
+                  export CHARLY_PLUGIN_DIR
+                  echo "plugin tree: $PLUGIN -> $CHARLY_PLUGIN_DIR" >&2
+                else
+                  echo "NO plugin-firecracker BINARY FOUND; searched /opt /usr/lib /usr/libexec /usr/local/lib" >&2
+                fi
                 cd /opt
                 if ! "$CHARLY" firecracker image build \
                        '@github.com/opencharly/layer-fireactions-runner/box/fireactions-runner:1e3e39f097d78e6328d26aca168d3baea2061265' \
