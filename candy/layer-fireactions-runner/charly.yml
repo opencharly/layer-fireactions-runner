@@ -30,6 +30,17 @@ layer-fireactions-runner:
                     - iptables-nft
                     - podman-docker
         plan:
+            # THE EXPERIMENT: ask the deploy target to deliver the plugin tree, instead of the bed
+            # manufacturing it in its own shell. With the CURRENT tag (v2026.292.0857) the step
+            # writes to whatever machine the PLUGIN runs on - the host - so the guest should still
+            # have no tree (#10). This step is what turns that claim into a measurement.
+            - run: deliver the plugin tree this runner needs at its venue
+              id: deliver-the-plugin-tree
+              plugin-tree:
+                  plugins:
+                      - plugin-firecracker
+              context:
+                  - deploy
             - run: create the runner root the guest agent works from
               id: runner-root
               run_as: root
