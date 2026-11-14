@@ -1,0 +1,21 @@
+# The FETCH TOOL the box build needs inside the disposable guest.
+#
+# Measured 2026-11-14 with an in-guest probe: `getent hosts github.com` answers (140.82.121.3), so the guest
+# HAS egress, and `command -v git` is MISSING — `git ls-remote https://github.com/…` therefore dies with
+# `bash: line 4: git: command not found`. The bed's box (`box/fireactions-runner/charly.yml`) composes one
+# REMOTE candy, so the build inside the guest must fetch it; without git the producer's build can never
+# produce an image there.
+runner-vm-git:
+    candy:
+        description: git in the disposable guest, so the producer can fetch the box's remote candy during the build.
+        distro:
+            arch:
+                package:
+                    - git
+        plan:
+            - check: git resolves the box's remote candy from the guest
+              id: guest-can-fetch
+              command: |
+                command -v git >/dev/null || { echo "NO GIT in the guest: the box composes a remote candy and the build cannot fetch it" >&2; exit 1; }
+                git ls-remote https://github.com/opencharly/layer-fireactions HEAD >/dev/null 2>&1 \
+                  || { echo "git cannot reach github.com from the guest: the box composes a remote candy and the build cannot fetch it" >&2; exit 1; }

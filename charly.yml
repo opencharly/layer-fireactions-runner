@@ -32,8 +32,8 @@ fireactions-runner-vm-base:
             base_user: arch
             distro: arch
         backend: libvirt
-        disk_size: 20G
-        ram: 4G
+        disk_size: 40G
+        ram: 8G
         cpu: 2
         machine: q35
         firmware: bios
@@ -58,13 +58,28 @@ fireactions-runner-vm-host:
             # text: `firecracker` is an out-of-process command plugin, and a project that does not
             # carry the candy has nothing for the loader to prepend. Measured 2026-10-16: the two
             # candies above deliver fine and the plugin is simply absent from the set.
-            - '@github.com/opencharly/plugin-firecracker/candy/plugin-firecracker:v2026.288.0016'
+            - '@github.com/opencharly/plugin-firecracker/candy/plugin-firecracker:v2026.318.0533'
             # The DELIVERER. `plugin-deploy-firecracker` serves `step:plugin-tree`, which fills
             # /tmp/charly-plugins from the deploying charly's store - so the tree above arrives from
             # the product instead of being manufactured by this bed's own shell. The variable that
             # points the loader at it is still OURS to set (opencharly/charly#977 keeps that layer in
             # the product); what changes is who puts the files there.
-            - '@github.com/opencharly/plugin-deploy-firecracker/candy/plugin-deploy-firecracker:v2026.292.1949'
+            - '@github.com/opencharly/plugin-deploy-firecracker/candy/plugin-deploy-firecracker:v2026.318.0132'
+            # THE DEPLOY SUBSTRATE. Measured 2026-11-14: without it `deploy add` refuses with
+            # `the "vm" deploy substrate is not available in this project — its deploy plugin
+            # (plugin-deploy-vm) is not in the candy closure`. The member is a `local:` venue
+            # (fireactions-runner-vm-host) whose step runs ON the guest, so the deliverer above
+            # needs the VM substrate composed just as the distro beds do.
+            - '@github.com/opencharly/plugin-deploy-vm/candy/plugin-deploy-vm:v2026.314.0712'
+            # THE FETCH TOOL. The box composes a REMOTE candy, so the build inside the guest must
+            # clone it. Measured 2026-11-14 with an in-guest probe: the guest HAS egress
+            # (`getent hosts github.com` → 140.82.121.3) and had NO git (`command -v git` → MISSING),
+            # so `git ls-remote` died with `bash: line 4: git: command not found`.
+            - 'runner-vm-git'
+            # THE GUEST ENGINE + the producer's own OS deps, from the candy that owns them: podman,
+            # rootlesskit, buildkit, buildah, e2fsprogs, coreutils, tar, util-linux. The VM's
+            # `cloud_init.package:` list does not land its packages (plugin-firecracker#12).
+            - '@github.com/opencharly/plugin-firecracker/candy/producer-vm-engine:v2026.318.0533'
 
 check-fireactions-runner-vm:
     vm:
@@ -90,6 +105,10 @@ check-fireactions-runner-vm:
             # sdk#398. Issue: opencharly/charly#916.
             - check: the runner image builds from this repo's box, pinned
               id: runner-image-builds
+              # The build fetches a remote candy and assembles a 2 GB image: measured 2026-11-14 it was
+              # killed by the default 2m0s never-hang bound BEFORE it could finish. The bound is a
+              # guard against a wedged step, not a build budget.
+              timeout: 20m
               command: |
                 set -eu
                 # The deploy own layout is the ONLY place charly is looked for: measured, the deploy provides
@@ -121,13 +140,34 @@ check-fireactions-runner-vm:
                 CHARLY_PLUGIN_DIR=/tmp/charly-plugins
                 export CHARLY_PLUGIN_DIR
                 echo "tree after the deliver step: $(ls /tmp/charly-plugins 2>/dev/null || echo ABSENT)" >&2
+                # /tmp IS A 2 GiB TMPFS on this cloud image (measured: `tmpfs 2.0G 2.0G 0 100% /tmp`
+                # while `/` is 40G at 13%), and the producer's build writes a 2 GB image plus a 2.4 GB
+                # root drive through TMPDIR — it fills /tmp and dies with `No space left on device`.
+                # Point the build's temporaries at the root filesystem.
+                # The producer also writes its ARTEFACT TREE at a fixed /tmp path, so the tmpfs itself
+                # must be big enough: measured 2.0G, 100% full, while `/` is 40G at 21%.
+                sudo mount -o remount,size=12G /tmp 2>/dev/null || true
                 cd /opt
-                if ! "$CHARLY" firecracker image build \
+                if ! ( set -x; "$CHARLY" firecracker image build \
                        '@github.com/opencharly/layer-fireactions-runner/box/fireactions-runner:1e3e39f097d78e6328d26aca168d3baea2061265' \
                        --ref localhost/fireactions-runner-proof:1 \
-                       --kernel /var/lib/firecracker/kernels/5.10/vmlinux > /tmp/runner-build.log 2>&1; then
-                  echo "=== the image build failed; its own output follows:" >&2
-                  head -10 /tmp/runner-build.log >&2
+                       --kernel /var/lib/firecracker/kernels/5.10/vmlinux ) > /tmp/runner-build.log 2>&1; then
+                  # THE LAST 160 BYTES AND NOTHING ELSE: the runner keeps ~200 characters of a
+                  # failing step's stderr (opencharly/charly#1141), and the producer's chained prefix
+                  # eats most of it. `head` spends the budget on context and loses the cause.
+                  # THE ERROR LINES, not the tail: the log ends with chained command echoes, so
+                  # the last bytes name an argument. The runner keeps ~200 characters
+                  # (opencharly/charly#1141), so surface what actually failed first.
+                  # THE RAW TAIL, NOTHING ELSE: the runner keeps ~200 characters
+                  # (opencharly/charly#1141), the producer's log is the only witness, and a grep can
+                  # come back empty (measured 2026-11-14: `BUILD FAILED:` with no matching line).
+                  # IS THE LOG EVEN THERE? An empty tail could mean "producer wrote nothing" or
+                  # "the redirect never ran". One line settles it inside the 200-char budget.
+                  # ONLY the tail: the budget is ~200 characters and every probe printed here
+                  # crowds the cause out (measured across six rounds).
+                  # WHO cannot read the kernel, and what are its bits?
+                  printf 'id=%s k=%s\n' "$(id -un)" "$(ls -l /var/lib/firecracker/kernels/5.10/vmlinux 2>&1)" >&2
+                  tail -c 120 /tmp/runner-build.log >&2
                   exit 1
                 fi
                 tail -3 /tmp/runner-build.log >&2
