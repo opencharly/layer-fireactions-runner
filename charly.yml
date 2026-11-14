@@ -133,8 +133,6 @@ check-fireactions-runner-vm:
                 # `plugin-tree:` step in the runner candy's plan is the only source. So this
                 # block only reports what the STEP left, which is what makes the run able to
                 # distinguish "the step delivered nothing" from "the bed made it itself".
-                CHARLY_PLUGIN_DIR=/tmp/charly-plugins
-                export CHARLY_PLUGIN_DIR
                 echo "tree after the deliver step: $(ls /tmp/charly-plugins 2>/dev/null || echo ABSENT)" >&2
                 # /tmp IS A 2 GiB TMPFS on this cloud image (measured: `tmpfs 2.0G 2.0G 0 100% /tmp`
                 # while `/` is 40G at 13%), and the producer's build writes a 2 GB image plus a 2.4 GB
