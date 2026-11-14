@@ -12,15 +12,14 @@ discover:
 # `PASS (steps=16)`, calver 2026.318.0817, 0 errors / 0 warnings.
 #
 # The image is built FROM THIS REPO'S BOX by a pinned remote ref, so the bed
-# boots the very image the repo ships instead of a second copy of its
+# builds the very image the repo ships instead of a second copy of its
 # definition - and a guest needs no checkout for that, which is why the ref
 # form is the honest one here.
 #
-# What can be asserted without networking: the CONTRACT lives on the root drive
-# (read back with debugfs, the producer's own technique) and the BOOT lives on
-# the VMM's serial output, which the ledger measured as the VMM's stdout. No
-# TAP, no root and no network are needed, exactly as Firecracker's own recipe
-# showed.
+# This bed BUILDS AND EMITS the artefact; it does not boot it. The boot that
+# reads the contract back off the root drive (with debugfs, the producer's own
+# technique) and off the VMM's serial output is a separate gate and is not in
+# this plan.
 # =============================================================================
 fireactions-runner-vm-base:
     vm:
@@ -46,9 +45,9 @@ fireactions-runner-vm-base:
 fireactions-runner-vm-host:
     local:
         description: >-
-            The boot venue: the pinned Firecracker release and kernel that start the artefact, and the engine
-            the image build runs through. No project is written in - the bed builds the image from this repo's
-            own box by a pinned remote ref, so there is no second definition to drift.
+            The build venue: the pinned Firecracker release and kernel the artefact is emitted for, and the
+            engine the image build runs through. No project is written in - the bed builds the image from this
+            repo's own box by a pinned remote ref, so there is no second definition to drift.
         candy:
             - '@github.com/opencharly/layer-firecracker/candy/layer-firecracker:v2026.287.1531'
             # The plugin's TREE, so `charly firecracker image build` resolves at this venue.
