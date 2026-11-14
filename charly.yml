@@ -62,6 +62,11 @@ fireactions-runner-vm-host:
             # points the loader at it is still OURS to set; what changes is who puts the files
             # there.
             - '@github.com/opencharly/plugin-deploy-firecracker/candy/plugin-deploy-firecracker:v2026.318.0132'
+            # THE DELIVERER'S PLAN LIVES HERE. `deliver-the-plugin-tree` is a step in THIS repo's
+            # layer candy's plan, and a plan only runs where its candy is composed - so the venue
+            # must carry it or the step never executes and the tree would come from nowhere. This
+            # entry is what makes the bed execute the delivery it asserts.
+            - 'layer-fireactions-runner'
             # THE DEPLOY SUBSTRATE. Measured 2026-11-14: without it `deploy add` refuses with
             # `the "vm" deploy substrate is not available in this project — its deploy plugin
             # (plugin-deploy-vm) is not in the candy closure`. The member is a `local:` venue
