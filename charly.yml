@@ -139,7 +139,6 @@ check-fireactions-runner-vm:
                 # /tmp IS A 2 GiB TMPFS on this cloud image (measured: `tmpfs 2.0G 2.0G 0 100% /tmp`
                 # while `/` is 40G at 13%), and the producer's build writes a 2 GB image plus a 2.4 GB
                 # root drive through TMPDIR — it fills /tmp and dies with `No space left on device`.
-                # Point the build's temporaries at the root filesystem.
                 # The producer also writes its ARTEFACT TREE at a fixed /tmp path, so the tmpfs itself
                 # must be big enough: measured 2.0G and 100% full while `/` sat at 21%, with the build
                 # needing ~4.5 GB (a 2 GB image plus a 2.4 GB root drive).
