@@ -96,10 +96,9 @@ check-fireactions-runner-vm:
                 from: fireactions-runner-vm-host
         plan:
             # The body invokes `charly firecracker image build`, and `firecracker` is an
-            # out-of-process command plugin: it resolves at this venue only because the
-            # plugin TREE is delivered (plugin-deploy-firecracker v2026.318.0132) and
-            # CHARLY_PLUGIN_DIR points the loader at it. That route LANDED: this step
-            # passes on a disposable guest (see the PR body for the run).
+            # out-of-process command plugin: it resolves at this venue because the plugin
+            # TREE is delivered (plugin-deploy-firecracker v2026.318.0132). That route
+            # LANDED, and this step passes on a disposable guest (see the PR body for the run).
             - check: the runner image builds from this repo's box, pinned
               id: runner-image-builds
               # The build fetches a remote candy and assembles a 2 GB image: measured 2026-11-14 it was
@@ -126,15 +125,12 @@ check-fireactions-runner-vm:
                 echo "charly: $CHARLY" >&2
                 # The plugin TREE. `charly firecracker` is an out-of-process command plugin, and a
                 # cloud_image venue has no Containerfile delivery step. The `plugin-tree:` step above
-                # is the ONLY source of the tree; CHARLY_PLUGIN_DIR PREPENDS a directory ahead of the
-                # FHS one the loader searches, which is the whole contract: a directory holding the
-                # executable, and the variable pointing at it in this shell.
+                # is the ONLY source of the tree, and the loader finds it there without any variable
+                # set by this shell - MEASURED: this bed passes with no export in the step at all.
                 # THE CLEAN MEASUREMENT. This bed no longer MANUFACTURES the tree - the
                 # `plugin-tree:` step in the runner candy's plan is the only source. So this
                 # block only reports what the STEP left, which is what makes the run able to
                 # distinguish "the step delivered nothing" from "the bed made it itself".
-                CHARLY_PLUGIN_DIR=/tmp/charly-plugins
-                export CHARLY_PLUGIN_DIR
                 echo "tree after the deliver step: $(ls /tmp/charly-plugins 2>/dev/null || echo ABSENT)" >&2
                 # /tmp IS A 2 GiB TMPFS on this cloud image (measured: `tmpfs 2.0G 2.0G 0 100% /tmp`
                 # while `/` is 40G at 13%), and the producer's build writes a 2 GB image plus a 2.4 GB
