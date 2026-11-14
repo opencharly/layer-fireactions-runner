@@ -9,7 +9,7 @@ discover:
 #
 # It builds the image from this repo's box, produces its root drive and emits the
 # microVM box image with its label, all inside a disposable guest - measured
-# `PASS (steps=16)`, calver 2026.318.0817, 0 errors / 0 warnings.
+# `PASS (steps=16)`, 0 errors / 0 warnings. The PR body pastes that run's calver.
 #
 # The image is built FROM THIS REPO'S BOX by a pinned remote ref, so the bed
 # builds the very image the repo ships instead of a second copy of its
@@ -99,7 +99,7 @@ check-fireactions-runner-vm:
             # out-of-process command plugin: it resolves at this venue only because the
             # plugin TREE is delivered (plugin-deploy-firecracker v2026.318.0132) and
             # CHARLY_PLUGIN_DIR points the loader at it. That route LANDED: this step
-            # passed at calver 2026.318.0817.
+            # passes on a disposable guest (see the PR body for the run).
             - check: the runner image builds from this repo's box, pinned
               id: runner-image-builds
               # The build fetches a remote candy and assembles a 2 GB image: measured 2026-11-14 it was
