@@ -150,21 +150,10 @@ check-fireactions-runner-vm:
                        '@github.com/opencharly/layer-fireactions-runner/box/fireactions-runner:1e3e39f097d78e6328d26aca168d3baea2061265' \
                        --ref localhost/fireactions-runner-proof:1 \
                        --kernel /var/lib/firecracker/kernels/5.10/vmlinux ) > /tmp/runner-build.log 2>&1; then
-                  # THE LAST 160 BYTES AND NOTHING ELSE: the runner keeps ~200 characters of a
-                  # failing step's stderr (opencharly/charly#1141), and the producer's chained prefix
-                  # eats most of it. `head` spends the budget on context and loses the cause.
-                  # THE ERROR LINES, not the tail: the log ends with chained command echoes, so
-                  # the last bytes name an argument. The runner keeps ~200 characters
-                  # (opencharly/charly#1141), so surface what actually failed first.
-                  # THE RAW TAIL, NOTHING ELSE: the runner keeps ~200 characters
-                  # (opencharly/charly#1141), the producer's log is the only witness, and a grep can
-                  # come back empty (measured 2026-11-14: `BUILD FAILED:` with no matching line).
-                  # IS THE LOG EVEN THERE? An empty tail could mean "producer wrote nothing" or
-                  # "the redirect never ran". One line settles it inside the 200-char budget.
-                  # ONLY the tail: the budget is ~200 characters and every probe printed here
-                  # crowds the cause out (measured across six rounds).
-                  # WHO cannot read the kernel, and what are its bits?
-                  printf 'id=%s k=%s\n' "$(id -un)" "$(ls -l /var/lib/firecracker/kernels/5.10/vmlinux 2>&1)" >&2
+                  # THE BUILD LOG'S TAIL. The runner keeps ~200 characters of a failing step's
+                  # stderr (opencharly/charly#1141), so the step prints the last 120 characters of
+                  # the producer's own log and nothing else: enough to name the cause, small enough
+                  # to survive the budget.
                   tail -c 120 /tmp/runner-build.log >&2
                   exit 1
                 fi

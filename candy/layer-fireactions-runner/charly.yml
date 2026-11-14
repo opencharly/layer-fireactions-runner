@@ -30,10 +30,11 @@ layer-fireactions-runner:
                     - iptables-nft
                     - podman-docker
         plan:
-            # THE EXPERIMENT: ask the deploy target to deliver the plugin tree, instead of the bed
-            # manufacturing it in its own shell. With the CURRENT tag (v2026.292.0857) the step
-            # writes to whatever machine the PLUGIN runs on - the host - so the guest should still
-            # have no tree (#10). This step is what turns that claim into a measurement.
+            # THE DELIVERY: the deploy target puts the plugin tree at the venue, instead of the bed
+            # manufacturing it in its own shell. MEASURED 2026-11-14 with plugin-deploy-firecracker
+            # v2026.318.0132: the tree IS present in the guest (`ls /tmp/charly-plugins` reports it),
+            # and the gate's build step resolves `charly firecracker` because of it - without the
+            # tree the verb is an unknown command and the step fails with charly's usage text.
             - run: deliver the plugin tree this runner needs at its venue
               id: deliver-the-plugin-tree
               plugin-tree:
