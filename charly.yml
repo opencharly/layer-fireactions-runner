@@ -137,8 +137,15 @@ check-fireactions-runner-vm:
                 # root drive through TMPDIR — it fills /tmp and dies with `No space left on device`.
                 # Point the build's temporaries at the root filesystem.
                 # The producer also writes its ARTEFACT TREE at a fixed /tmp path, so the tmpfs itself
-                # must be big enough: measured 2.0G, 100% full, while `/` is 40G at 21%.
-                sudo mount -o remount,size=12G /tmp 2>/dev/null || true
+                # must be big enough: measured 2.0G and 100% full while `/` sat at 21%, with the build
+                # needing ~4.5 GB (a 2 GB image plus a 2.4 GB root drive).
+                TMPFS_BUILD_BYTES=12G
+                if ! sudo mount -o remount,size="$TMPFS_BUILD_BYTES" /tmp; then
+                  echo "could not raise /tmp to $TMPFS_BUILD_BYTES: the build needs it for the image and the root drive" >&2
+                  exit 1
+                fi
+                [ "$(df --output=size -BG /tmp | tail -1 | tr -dc '0-9')" -ge 12 ] \
+                  || { echo "/tmp is still smaller than $TMPFS_BUILD_BYTES after the remount" >&2; exit 1; }
                 cd /opt
                 if ! ( set -x; "$CHARLY" firecracker image build \
                        '@github.com/opencharly/layer-fireactions-runner/box/fireactions-runner:1e3e39f097d78e6328d26aca168d3baea2061265' \
