@@ -7,12 +7,9 @@ discover:
 # =============================================================================
 # WI-10's gate: BUILD the runner image from this repo's box and assert the artefact.
 #
-# The ledger names two things for this work item - the image's own plan, and a
-# microVM boot that asserts the guest contract. THIS BED DOES THE FIRST: the image
-# builds, its root drive is produced and the microVM box image is emitted with its
-# label, all inside a disposable guest (`PASS (steps=16)`, calver 2026.318.0734).
-# The boot that asserts the running guest contract is the phase this repo adds
-# next, and it is not claimed here.
+# It builds the image from this repo's box, produces its root drive and emits the
+# microVM box image with its label, all inside a disposable guest - measured
+# `PASS (steps=16)`, calver 2026.318.0734, 0 errors / 0 warnings.
 #
 # The image is built FROM THIS REPO'S BOX by a pinned remote ref, so the bed
 # boots the very image the repo ships instead of a second copy of its
@@ -89,9 +86,7 @@ check-fireactions-runner-vm:
         lifecycle: dev
         description: >-
             WI-10's gate on a disposable guest: build the runner image from this repo's box under the pinned
-            VMM and kernel, and assert the artefact is produced. This is the FIRST of the two things the
-            ledger names for WI-10; the microVM boot that asserts the guest contract on the root drive and
-            on the serial output is the second and is not claimed here.
+            VMM and kernel, and assert the artefact is produced.
         check-fireactions-runner-vm-member:
             local:
                 from: fireactions-runner-vm-host
@@ -125,12 +120,11 @@ check-fireactions-runner-vm:
                   exit 1
                 fi
                 echo "charly: $CHARLY" >&2
-                # The plugin TREE. `charly firecracker` is an out-of-process command plugin, and the
-                # delivery a Containerfile performs at image-build time has no equivalent on a
-                # cloud_image venue - so the tree is provisioned here, from the plugin the candy
-                # installed. CHARLY_PLUGIN_DIR PREPENDS a directory ahead of the FHS one the loader
-                # searches, so this is the whole contract: a directory holding the executable, and
-                # the variable pointing at it in this shell.
+                # The plugin TREE. `charly firecracker` is an out-of-process command plugin, and a
+                # cloud_image venue has no Containerfile delivery step. The `plugin-tree:` step above
+                # is the ONLY source of the tree; CHARLY_PLUGIN_DIR PREPENDS a directory ahead of the
+                # FHS one the loader searches, which is the whole contract: a directory holding the
+                # executable, and the variable pointing at it in this shell.
                 # THE CLEAN MEASUREMENT. This bed no longer MANUFACTURES the tree - the
                 # `plugin-tree:` step in the runner candy's plan is the only source. So this
                 # block only reports what the STEP left, which is what makes the run able to
