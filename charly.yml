@@ -3,3 +3,162 @@ discover:
       recursive: true
     - path: candy
       recursive: true
+
+# =============================================================================
+# WI-10's gate: BUILD the runner image from this repo's box and assert the artefact.
+#
+# It builds the image from this repo's box, produces its root drive and emits the
+# microVM box image with its label, all inside a disposable guest - measured
+# `PASS (steps=16)`, 0 errors / 0 warnings. The PR body pastes that run's calver.
+#
+# The image is built FROM THIS REPO'S BOX by a pinned remote ref, so the bed
+# builds the very image the repo ships instead of a second copy of its
+# definition - and a guest needs no checkout for that, which is why the ref
+# form is the honest one here.
+#
+# This bed BUILDS AND EMITS the artefact; it does not boot it. The boot that
+# reads the contract back off the root drive (with debugfs, the producer's own
+# technique) and off the VMM's serial output is a separate gate and is not in
+# this plan.
+# =============================================================================
+fireactions-runner-vm-base:
+    vm:
+        source:
+            kind: cloud_image
+            url: https://geo.mirror.pkgbuild.com/images/latest/Arch-Linux-x86_64-cloudimg.qcow2
+            base_user: arch
+            distro: arch
+        backend: libvirt
+        disk_size: 40G
+        ram: 8G
+        cpu: 2
+        machine: q35
+        firmware: bios
+        ssh:
+            port_auto: true
+            key_source: generate
+        cloud_init:
+            timezone: UTC
+            package:
+                - sudo
+
+fireactions-runner-vm-host:
+    local:
+        description: >-
+            The build venue: the pinned Firecracker release and kernel the artefact is emitted for, and the
+            engine the image build runs through. No project is written in - the bed builds the image from this
+            repo's own box by a pinned remote ref, so there is no second definition to drift.
+        candy:
+            - '@github.com/opencharly/layer-firecracker/candy/layer-firecracker:v2026.287.1531'
+            # The plugin's TREE, so `charly firecracker image build` resolves at this venue.
+            # Without it the verb is an unknown command and the step answers with charly's usage
+            # text: `firecracker` is an out-of-process command plugin, and a project that does not
+            # carry the candy has nothing for the loader to prepend. Measured 2026-10-16: the two
+            # candies above deliver fine and the plugin is simply absent from the set.
+            - '@github.com/opencharly/plugin-firecracker/candy/plugin-firecracker:v2026.318.0533'
+            # The DELIVERER. `plugin-deploy-firecracker` serves `step:plugin-tree`, which fills
+            # /tmp/charly-plugins from the deploying charly's store - so the tree above arrives from
+            # the product instead of being manufactured by this bed's own shell. The variable that
+            # points the loader at it is still OURS to set; what changes is who puts the files
+            # there.
+            - '@github.com/opencharly/plugin-deploy-firecracker/candy/plugin-deploy-firecracker:v2026.318.0132'
+            # THE DELIVERER'S PLAN LIVES HERE. `deliver-the-plugin-tree` is a step in THIS repo's
+            # layer candy's plan, and a plan only runs where its candy is composed - so the venue
+            # must carry it or the step never executes and the tree would come from nowhere. This
+            # entry is what makes the bed execute the delivery it asserts.
+            - 'layer-fireactions-runner'
+            # THE DEPLOY SUBSTRATE. Measured 2026-11-14: without it `deploy add` refuses with
+            # `the "vm" deploy substrate is not available in this project — its deploy plugin
+            # (plugin-deploy-vm) is not in the candy closure`. The member is a `local:` venue
+            # (fireactions-runner-vm-host) whose step runs ON the guest, so the deliverer above
+            # needs the VM substrate composed just as the distro beds do.
+            - '@github.com/opencharly/plugin-deploy-vm/candy/plugin-deploy-vm:v2026.314.0712'
+            # THE FETCH TOOL. The box composes a REMOTE candy, so the build inside the guest must
+            # clone it. Measured 2026-11-14 with an in-guest probe: the guest HAS egress
+            # (`getent hosts github.com` → 140.82.121.3) and had NO git (`command -v git` → MISSING),
+            # so `git ls-remote` died with `bash: line 4: git: command not found`.
+            - 'runner-vm-git'
+            # THE GUEST ENGINE + the producer's own OS deps, from the candy that owns them: podman,
+            # rootlesskit, buildkit, buildah, e2fsprogs, coreutils, tar, util-linux. The VM's
+            # `cloud_init.package:` list does not land its packages (plugin-firecracker#12).
+            - '@github.com/opencharly/plugin-firecracker/candy/producer-vm-engine:v2026.318.0533'
+
+check-fireactions-runner-vm:
+    vm:
+        from: fireactions-runner-vm-base
+        disposable: true
+        lifecycle: dev
+        description: >-
+            WI-10's gate on a disposable guest: build the runner image from this repo's box under the pinned
+            VMM and kernel, and assert the artefact is produced.
+        check-fireactions-runner-vm-member:
+            local:
+                from: fireactions-runner-vm-host
+        plan:
+            # The body invokes `charly firecracker image build`, and `firecracker` is an
+            # out-of-process command plugin: it resolves at this venue only because the
+            # plugin TREE is delivered (plugin-deploy-firecracker v2026.318.0132) and
+            # CHARLY_PLUGIN_DIR points the loader at it. That route LANDED: this step
+            # passes on a disposable guest (see the PR body for the run).
+            - check: the runner image builds from this repo's box, pinned
+              id: runner-image-builds
+              # The build fetches a remote candy and assembles a 2 GB image: measured 2026-11-14 it was
+              # killed by the default 2m0s never-hang bound BEFORE it could finish. The bound is a
+              # guard against a wedged step, not a build budget.
+              timeout: 20m
+              command: |
+                set -eu
+                # The deploy own layout is the ONLY place charly is looked for: measured, the deploy provides
+                # it as an executable FILE at /tmp/charly-CalVer-hash.
+                #
+                # This block was written once with an UNQUOTED heredoc, and bash expanded every $ variable in
+                # it before the file was written - which is how a guest that HAD charly reported that it had
+                # none, and why the pinned ref below was empty. The check echoes what it resolved.
+                CHARLY=
+                for f in /tmp/charly-*; do
+                  if [ -f "$f" ] && [ -x "$f" ]; then CHARLY="$f"; break; fi
+                done
+                if [ -z "$CHARLY" ]; then
+                  echo "NO CHARLY FOUND in the guest. PATH=$PATH; /tmp holds:" >&2
+                  ls -la /tmp >&2
+                  exit 1
+                fi
+                echo "charly: $CHARLY" >&2
+                # The plugin TREE. `charly firecracker` is an out-of-process command plugin, and a
+                # cloud_image venue has no Containerfile delivery step. The `plugin-tree:` step above
+                # is the ONLY source of the tree; CHARLY_PLUGIN_DIR PREPENDS a directory ahead of the
+                # FHS one the loader searches, which is the whole contract: a directory holding the
+                # executable, and the variable pointing at it in this shell.
+                # THE CLEAN MEASUREMENT. This bed no longer MANUFACTURES the tree - the
+                # `plugin-tree:` step in the runner candy's plan is the only source. So this
+                # block only reports what the STEP left, which is what makes the run able to
+                # distinguish "the step delivered nothing" from "the bed made it itself".
+                CHARLY_PLUGIN_DIR=/tmp/charly-plugins
+                export CHARLY_PLUGIN_DIR
+                echo "tree after the deliver step: $(ls /tmp/charly-plugins 2>/dev/null || echo ABSENT)" >&2
+                # /tmp IS A 2 GiB TMPFS on this cloud image (measured: `tmpfs 2.0G 2.0G 0 100% /tmp`
+                # while `/` is 40G at 13%), and the producer's build writes a 2 GB image plus a 2.4 GB
+                # root drive through TMPDIR — it fills /tmp and dies with `No space left on device`.
+                # The producer also writes its ARTEFACT TREE at a fixed /tmp path, so the tmpfs itself
+                # must be big enough: measured 2.0G and 100% full while `/` sat at 21%, with the build
+                # needing ~4.5 GB (a 2 GB image plus a 2.4 GB root drive).
+                TMPFS_BUILD_BYTES=12G
+                if ! sudo mount -o remount,size="$TMPFS_BUILD_BYTES" /tmp; then
+                  echo "could not raise /tmp to $TMPFS_BUILD_BYTES: the build needs it for the image and the root drive" >&2
+                  exit 1
+                fi
+                [ "$(df --output=size -BG /tmp | tail -1 | tr -dc '0-9')" -ge 12 ] \
+                  || { echo "/tmp is still smaller than $TMPFS_BUILD_BYTES after the remount" >&2; exit 1; }
+                cd /opt
+                if ! ( set -x; "$CHARLY" firecracker image build \
+                       '@github.com/opencharly/layer-fireactions-runner/box/fireactions-runner:1e3e39f097d78e6328d26aca168d3baea2061265' \
+                       --ref localhost/fireactions-runner-proof:1 \
+                       --kernel /var/lib/firecracker/kernels/5.10/vmlinux ) > /tmp/runner-build.log 2>&1; then
+                  # THE BUILD LOG'S TAIL. The runner keeps ~200 characters of a failing step's
+                  # stderr (opencharly/charly#1141), so the step prints the last 120 characters of
+                  # the producer's own log and nothing else: enough to name the cause, small enough
+                  # to survive the budget.
+                  tail -c 120 /tmp/runner-build.log >&2
+                  exit 1
+                fi
+                tail -3 /tmp/runner-build.log >&2
