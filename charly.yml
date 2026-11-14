@@ -8,10 +8,11 @@ discover:
 # WI-10's gate: BUILD the runner image from this repo's box and assert the artefact.
 #
 # The ledger names two things for this work item - the image's own plan, and a
-# microVM boot that asserts the guest contract. THIS BED DOES THE FIRST AND NOT
-# YET THE SECOND, and says so rather than describing the pair as if both ran: the
-# boot is the phase this repo adds when the venue can serve a plugin-backed step.
-# It cannot today - see the note on the plan step below and opencharly/charly#916.
+# microVM boot that asserts the guest contract. THIS BED DOES THE FIRST: the image
+# builds, its root drive is produced and the microVM box image is emitted with its
+# label, all inside a disposable guest (`PASS (steps=16)`, calver 2026.318.0734).
+# The boot that asserts the running guest contract is the phase this repo adds
+# next, and it is not claimed here.
 #
 # The image is built FROM THIS REPO'S BOX by a pinned remote ref, so the bed
 # boots the very image the repo ships instead of a second copy of its
@@ -62,8 +63,8 @@ fireactions-runner-vm-host:
             # The DELIVERER. `plugin-deploy-firecracker` serves `step:plugin-tree`, which fills
             # /tmp/charly-plugins from the deploying charly's store - so the tree above arrives from
             # the product instead of being manufactured by this bed's own shell. The variable that
-            # points the loader at it is still OURS to set (opencharly/charly#977 keeps that layer in
-            # the product); what changes is who puts the files there.
+            # points the loader at it is still OURS to set; what changes is who puts the files
+            # there.
             - '@github.com/opencharly/plugin-deploy-firecracker/candy/plugin-deploy-firecracker:v2026.318.0132'
             # THE DEPLOY SUBSTRATE. Measured 2026-11-14: without it `deploy add` refuses with
             # `the "vm" deploy substrate is not available in this project — its deploy plugin
@@ -90,19 +91,16 @@ check-fireactions-runner-vm:
             WI-10's gate on a disposable guest: build the runner image from this repo's box under the pinned
             VMM and kernel, and assert the artefact is produced. This is the FIRST of the two things the
             ledger names for WI-10; the microVM boot that asserts the guest contract on the root drive and
-            on the serial output is the second, and it is not in this plan because a plugin-backed step is
-            an unknown command at this venue until plugin-tree delivery lands (opencharly/charly#916).
+            on the serial output is the second and is not claimed here.
         check-fireactions-runner-vm-member:
             local:
                 from: fireactions-runner-vm-host
         plan:
-            # RED UNTIL PLUGIN-TREE DELIVERY LANDS. The body invokes
-            # `charly firecracker image build`, and `firecracker` is an
-            # out-of-process command plugin: at this venue the verb is not served,
-            # so charly answers `Usage: charly <command> [flags]` and the step
-            # exits 1. Measured 2026-10-16: five of this bed's six steps pass and
-            # this is the only one that fails, for that reason. Delivery route:
-            # sdk#398. Issue: opencharly/charly#916.
+            # The body invokes `charly firecracker image build`, and `firecracker` is an
+            # out-of-process command plugin: it resolves at this venue only because the
+            # plugin TREE is delivered (plugin-deploy-firecracker v2026.318.0132) and
+            # CHARLY_PLUGIN_DIR points the loader at it. That route LANDED: this step
+            # passed at calver 2026.318.0734.
             - check: the runner image builds from this repo's box, pinned
               id: runner-image-builds
               # The build fetches a remote candy and assembles a 2 GB image: measured 2026-11-14 it was
